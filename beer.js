@@ -22,8 +22,7 @@
     bubbles = [];
     for (var i = 0; i < n; i++) bubbles.push(newBubble(true));
     streams = [];
-    for (var s = 0, k = Math.max(3, Math.round(W / 90)); s < k; s++)
-      streams.push({ x: rand(0.08, 0.92) * W, t: rand(0, 1), every: rand(0.05, 0.12), r: rand(0.7, 1.3) });
+    for (var s = 0, k = Math.min(8, Math.max(4, Math.round(W / 70))); s < k; s++) streams.push(newStream(rand(0, 1)));
   }
 
   function drawGlass() {
@@ -52,6 +51,16 @@
       b.addColorStop(1, "rgba(255,250,225,0)");
       c.fillStyle = b; c.fillRect((at - width) * W, 0, width * 2 * W, H);
     }
+  }
+
+  // A nucleation point: a steady line of tiny bubbles. The point sways slowly left and right, so the line
+  // curves a little, and after a while it dies and starts again somewhere else.
+  function newStream(age) {
+    var life = rand(12, 30);
+    return {
+      x: rand(0.06, 0.94) * W, sway: rand(4, 16), freq: rand(0.15, 0.5), phase: rand(0, 6.28),
+      every: rand(0.04, 0.12), r: rand(0.7, 1.4), t: 0, age: age * life, life: life
+    };
   }
 
   // Mostly tiny bubbles, a few big ones. Bigger bubbles rise faster and wobble more.
@@ -108,11 +117,17 @@
       if (offscreen(b)) b = bubbles[i] = respawn(b);
       drawBubbleAt(b, t);
     }
-    // nucleation streams: a steady line of tiny bubbles from one spot at the bottom
+    // nucleation streams
     for (var s = 0; s < streams.length; s++) {
       var st = streams[s];
-      st.t += dt;
-      if (st.t > st.every) { st.t = 0; streamBubbles.push(Object.assign(newBubble(false, st.x, st.r), { y: H + 2, wob: 0.3, a: 0.9 })); }
+      st.t += dt; st.age += dt;
+      if (st.age > st.life) { st = streams[s] = newStream(0); continue; }
+      if (st.t > st.every) {
+        st.t = 0;
+        var sx = st.x + Math.sin(st.phase + t * st.freq) * st.sway;
+        streamBubbles.push(Object.assign(newBubble(false, sx, st.r * rand(0.8, 1.2)),
+          { y: H + 2, wob: rand(0.3, 1.2), freq: rand(1, 2.5), a: 0.9 }));
+      }
     }
     for (var j = streamBubbles.length - 1; j >= 0; j--) {
       var sb = streamBubbles[j];

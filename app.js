@@ -66,19 +66,23 @@
   setInterval(pick, 30000);
 
   // ---- location ----------------------------------------------------------------------------------
+  // "located" = the location prompt is out of the way (answered either way); idiot.js waits for it.
+  var announced = false;
+  function located() { if (!announced) { announced = true; window.dispatchEvent(new Event("located")); } }
+
   var watching = false;
   function startLocation() {
     if (watching) return;
     watching = true;
     if (fakeAt.length === 2 && !isNaN(fakeAt[0]) && !isNaN(fakeAt[1])) {
-      pos = { lat: fakeAt[0], lon: fakeAt[1] }; pick(); return;
+      pos = { lat: fakeAt[0], lon: fakeAt[1] }; pick(); setTimeout(located, 500); return;
     }
     if (!navigator.geolocation) { say("no location on this device"); return; }
     navigator.geolocation.watchPosition(function (p) {
       pos = { lat: p.coords.latitude, lon: p.coords.longitude };
-      pick();
+      pick(); located();
     }, function (err) {
-      watching = false;
+      watching = false; located();
       say(err.code === 1 ? "location blocked" : "can’t find you");
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }
