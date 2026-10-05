@@ -1,6 +1,12 @@
-# Project Instructions for AI Agents
+# beer-compass — instructions for AI agents
 
-This file provides instructions and context for AI coding agents working on this project.
+## AI notes (read first)
+
+- **`ai-notes/`** — the story of this project: what it is, how the idea evolved (dated timeline), how
+  it's built and deployed, gotchas. A new agent should read `ai-notes/README.md` and then the newest
+  numbered doc before touching anything.
+- **Maintain ai-notes/**: when you make a significant change or decision, add a new dated doc
+  (`NN-topic-YYYY-MM-DD.md`) or append to the current one, and keep `ai-notes/README.md`'s list current.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker
@@ -49,22 +55,3 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
-
-
-## Build & Test
-
-_Add your build and test commands here_
-
-```bash
-# Example:
-# npm install
-# npm test
-```
-
-## Architecture Overview
-
-_Add a brief overview of your project architecture_
-
-## Conventions & Patterns
-
-_Add your project-specific conventions here_
