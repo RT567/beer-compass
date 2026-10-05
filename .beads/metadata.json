@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "beer_compass",
+  "project_id": "9f2b76eb-a6bf-4bcb-b36e-d13068676fb8"
+}
