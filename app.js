@@ -107,7 +107,18 @@
   }
 
   var gotAbsolute = false, compassMissing = false;
-  var sensors = { abs: 0, rel: 0, ios: 0, last: "", perm: needsTapLabel() }; // for ?debug
+  var sensors = { abs: 0, rel: 0, ios: 0, motionEvents: 0, taps: 0, perm: needsTapLabel(), states: {} }; // for ?debug
+  function n(v) { return v == null ? "none" : Math.round(v); }
+  function abg(e) { return "a=" + n(e.alpha) + " b=" + n(e.beta) + " g=" + n(e.gamma); }
+  if (debug) {
+    window.addEventListener("devicemotion", function () { sensors.motionEvents++; });
+    ["accelerometer", "gyroscope", "magnetometer"].forEach(function (name) {
+      if (!navigator.permissions) return;
+      navigator.permissions.query({ name: name }).then(function (p) {
+        sensors.states[name] = p.state; p.onchange = function () { sensors.states[name] = p.state; };
+      }).catch(function (e) { sensors.states[name] = "?" + (e && e.name); });
+    });
+  }
   function needsTapLabel() {
     return typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function" ? "not asked" : "n/a";
   }
@@ -118,14 +129,14 @@
     if (first) pick();
   }
   function onAbsolute(e) {
-    sensors.abs++; sensors.last = "abs a=" + Math.round(e.alpha) + " b=" + Math.round(e.beta) + " g=" + Math.round(e.gamma);
+    sensors.abs++; sensors.lastAbs = abg(e);
     if (e.alpha == null) return;
     gotAbsolute = true;
     setMagnetic(headingFromEuler(e.alpha, e.beta, e.gamma));
   }
   function onOrientation(e) {
-    if (typeof e.webkitCompassHeading === "number") { sensors.ios++; sensors.last = "ios h=" + Math.round(e.webkitCompassHeading); }
-    else { sensors.rel++; if (!sensors.abs) sensors.last = "rel" + (e.absolute ? "(abs)" : "") + " a=" + Math.round(e.alpha); }
+    if (typeof e.webkitCompassHeading === "number") { sensors.ios++; sensors.lastRel = "ios heading " + Math.round(e.webkitCompassHeading); }
+    else { sensors.rel++; sensors.lastRel = (e.absolute ? "absolute " : "") + abg(e); }
     if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) setMagnetic(e.webkitCompassHeading); // iOS
     else if (e.absolute && !gotAbsolute && e.alpha != null) setMagnetic(headingFromEuler(e.alpha, e.beta, e.gamma)); // Firefox
   }
@@ -173,6 +184,7 @@
   // Listen from the start anyway: browsers that don't gate it send headings straight away.
   var needsTap = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
   document.addEventListener("click", function () {
+    sensors.taps++;
     if (needsTap && heading == null) askSensors();
     startLocation(); // retry if location failed earlier
   });
@@ -224,9 +236,18 @@
     status.innerHTML = "";
     status.appendChild(document.createTextNode(line));
     var d = document.createElement("div");
-    d.textContent = "v6 · perm " + (sensors.absPerm ? "abs:" + sensors.absPerm + " " : "") + sensors.perm + " motion " + (sensors.motion || "-") + " · events abs " + sensors.abs + " rel " + sensors.rel + " ios " + sensors.ios +
-      " gs " + (sensors.gs || 0) + (sensors.gsErr ? "(" + sensors.gsErr + ")" : "") + " · " + sensors.last + " · heading " + (heading == null ? "none" : Math.round(heading)) +
-      (compassMissing ? " · NO COMPASS" : "") + " · screen " + screenAngle();
+    var chrome = (navigator.userAgent.match(/(Chrome|Firefox|Version)\/[\d.]+/) || ["?"])[0];
+    var st = sensors.states;
+    d.textContent = [
+      "v7 · " + chrome + (window.isSecureContext ? "" : " · NOT SECURE") + " · taps " + sensors.taps,
+      "asked: absolute " + (sensors.absPerm || "-") + " · orientation " + sensors.perm + " · motion " + (sensors.motion || "-"),
+      "chrome says: accel " + (st.accelerometer || "-") + " gyro " + (st.gyroscope || "-") + " magnet " + (st.magnetometer || "-"),
+      "events: absolute " + sensors.abs + " · orientation " + sensors.rel + " · ios " + sensors.ios + " · motion " + sensors.motionEvents +
+        " · sensor-api " + (sensors.gs || 0) + (sensors.gsErr ? " (" + sensors.gsErr + ")" : ""),
+      "last absolute: " + (sensors.lastAbs || "-"),
+      "last orientation: " + (sensors.lastRel || "-"),
+      "heading " + (heading == null ? "none" : Math.round(heading)) + (compassMissing ? " · NO COMPASS" : "") + " · screen " + screenAngle()
+    ].join("\n");
     status.appendChild(d);
   }, 250);
 
