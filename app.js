@@ -63,7 +63,7 @@
     target = best;
     if (!target) say("nothing open");
     else say((target.name || "(no name)") + " · " + target.kind + " · " + Math.round(bestD) + " m · " +
-      (target.guessed ? "guessed hours" : target.raw) + (heading == null ? " · no compass" : ""));
+      (target.guessed ? "guessed hours" : target.raw));
   }
   setInterval(pick, 30000);
 
@@ -107,6 +107,10 @@
   }
 
   var gotAbsolute = false, compassMissing = false;
+  var sensors = { abs: 0, rel: 0, ios: 0, last: "", perm: needsTapLabel() }; // for ?debug
+  function needsTapLabel() {
+    return typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function" ? "not asked" : "n/a";
+  }
   function setMagnetic(h) {
     var first = heading == null;
     compassMissing = false;
@@ -114,11 +118,14 @@
     if (first) pick();
   }
   function onAbsolute(e) {
+    sensors.abs++; sensors.last = "abs a=" + Math.round(e.alpha) + " b=" + Math.round(e.beta) + " g=" + Math.round(e.gamma);
     if (e.alpha == null) return;
     gotAbsolute = true;
     setMagnetic(headingFromEuler(e.alpha, e.beta, e.gamma));
   }
   function onOrientation(e) {
+    if (typeof e.webkitCompassHeading === "number") { sensors.ios++; sensors.last = "ios h=" + Math.round(e.webkitCompassHeading); }
+    else { sensors.rel++; if (!sensors.abs) sensors.last = "rel" + (e.absolute ? "(abs)" : "") + " a=" + Math.round(e.alpha); }
     if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) setMagnetic(e.webkitCompassHeading); // iOS
     else if (e.absolute && !gotAbsolute && e.alpha != null) setMagnetic(headingFromEuler(e.alpha, e.beta, e.gamma)); // Firefox
   }
@@ -129,9 +136,35 @@
     window.addEventListener("deviceorientationabsolute", onAbsolute);
     window.addEventListener("deviceorientation", onOrientation);
   }
-  // No heading 1.5 s after we were allowed one: this device has no compass (laptops).
+  // No heading 1.5 s after we were allowed one: try Chrome's Generic Sensor API, and if that gives nothing
+  // either within another 1.5 s, this device has no compass (laptops).
   function expectCompass() {
-    setTimeout(function () { if (heading == null) { compassMissing = true; pick(); } }, 1500);
+    setTimeout(function () {
+      if (heading != null) return;
+      trySensor();
+      setTimeout(function () { if (heading == null) { compassMissing = true; pick(); } }, 1500);
+    }, 1500);
+  }
+
+  // AbsoluteOrientationSensor gives a quaternion (device -> east/north/up). Same trick as headingFromEuler:
+  // heading of (device y axis - device z axis) projected onto the ground.
+  var sensorStarted = false;
+  function trySensor() {
+    if (sensorStarted || !("AbsoluteOrientationSensor" in window)) return;
+    sensorStarted = true;
+    try {
+      var s = new AbsoluteOrientationSensor({ frequency: 30, referenceFrame: "screen" });
+      s.addEventListener("reading", function () {
+        var q = s.quaternion, x = q[0], y = q[1], z = q[2], w = q[3];
+        var east = 2 * (x * y - z * w) - 2 * (x * z + y * w);
+        var north = (1 - 2 * (x * x + z * z)) - 2 * (y * z - x * w);
+        sensors.gs = (sensors.gs || 0) + 1;
+        // referenceFrame "screen" already accounts for screen rotation, so undo setMagnetic's adjustment
+        setMagnetic((Math.atan2(east, north) * 180 / Math.PI + 360 - screenAngle()) % 360);
+      });
+      s.addEventListener("error", function (e) { sensors.gsErr = e.error && e.error.name; });
+      s.start();
+    } catch (e) { sensors.gsErr = e.name; }
   }
 
   // iOS (and recent Chrome) only hand out compass data after a tap + "Allow", so the first tap anywhere asks.
@@ -145,9 +178,11 @@
         DeviceMotionEvent.requestPermission().catch(function () {});
     };
     if (needsTap && heading == null) {
-      DeviceOrientationEvent.requestPermission()
-        .then(function (state) { if (state === "granted") { expectCompass(); motion(); } else { compassMissing = true; pick(); } })
-        .catch(function () { compassMissing = true; pick(); }); // e.g. no user gesture; the next tap retries
+      // true = absolute orientation, i.e. the magnetometer too. Without it Chrome (Android) only grants the
+      // relative sensors and never fires deviceorientationabsolute. iOS ignores the argument.
+      DeviceOrientationEvent.requestPermission(true)
+        .then(function (state) { sensors.perm = state; if (state === "granted") { expectCompass(); motion(); } else { compassMissing = true; pick(); } })
+        .catch(function (err) { sensors.perm = "error: " + (err && err.name); compassMissing = true; pick(); }); // e.g. no user gesture; the next tap retries
     } else motion();
     startLocation(); // retry if location failed earlier
   });
@@ -165,6 +200,19 @@
   });
 
   // Faded arrow = nothing to point at yet, or (iPhone) waiting for the first tap to unlock the compass.
+  // ?debug: sensor readout under the target line, refreshed a few times a second
+  if (debug) setInterval(function () {
+    if (!status) return;
+    var line = status.firstChild && status.firstChild.nodeType === 3 ? status.firstChild.textContent : "";
+    status.innerHTML = "";
+    status.appendChild(document.createTextNode(line));
+    var d = document.createElement("div");
+    d.textContent = "perm " + sensors.perm + " · events abs " + sensors.abs + " rel " + sensors.rel + " ios " + sensors.ios +
+      " gs " + (sensors.gs || 0) + (sensors.gsErr ? "(" + sensors.gsErr + ")" : "") + " · " + sensors.last + " · heading " + (heading == null ? "none" : Math.round(heading)) +
+      (compassMissing ? " · NO COMPASS" : "") + " · screen " + screenAngle();
+    status.appendChild(d);
+  }, 250);
+
   function frame() {
     if (target && pos && !(needsTap && heading == null && !compassMissing)) {
       var want = bearing(pos, target) - (heading || 0);
