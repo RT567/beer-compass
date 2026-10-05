@@ -1,6 +1,7 @@
 // Beer Compass: the arrow points at the nearest place that's open and sells alcohol. No distance, no name.
 // Venues: data/venues.json (OpenStreetMap, Greater Sydney, see scripts/fetch_venues.py).
-// URL flags for testing: ?at=-33.87,151.21 fakes your position, ?debug shows the target's name and distance.
+// URL flags for testing: ?at=-33.87,151.21 fakes your position, ?debug shows the target's name and distance,
+// ?arrow=needle|soft|line picks the arrow style.
 (function () {
   var DECLINATION = 12.8; // magnetic north is ~12.8° east of true north across Sydney (WMM, 2026)
   var params = new URLSearchParams(location.search);
@@ -8,6 +9,7 @@
   var fakeAt = (params.get("at") || "").split(",").map(Number);
 
   var arrow = document.getElementById("arrow");
+  if (params.get("arrow")) arrow.setAttribute("data-style", params.get("arrow"));
   // The page shows nothing but the arrow. With ?debug a status line says what it's pointing at and why.
   var status = null;
   if (debug) { status = document.createElement("div"); status.id = "status"; document.body.appendChild(status); }
