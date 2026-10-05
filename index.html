@@ -11,7 +11,6 @@ html,body{height:100%;margin:0}
 body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;background:#e9a522;color:#fff;overflow:hidden;
   -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 #beer{position:fixed;inset:0;width:100%;height:100%;z-index:-1}
-h1{font-size:28px;text-shadow:0 1px 3px rgba(110,50,0,.45);margin:max(24px,env(safe-area-inset-top)) 0 0}
 main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%}
 #arrow{width:min(70vw,50vh);height:min(70vw,50vh);transition:opacity .3s;fill:#fff;stroke:#fff;
   filter:drop-shadow(0 1px 4px rgba(110,50,0,.3))}
@@ -20,11 +19,8 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
 #arrow:not([data-style]) .needle,#arrow[data-style=needle] .needle,#arrow[data-style=soft] .soft,#arrow[data-style=line] .line{display:inline}
 #arrow.idle{opacity:.3}
 #status{position:fixed;bottom:40px;left:0;right:0;color:#666;font-size:14px;text-align:center;padding:0 16px}
-footer{font-size:9px;color:rgba(255,255,255,.55);margin-bottom:max(8px,env(safe-area-inset-bottom))}
-footer a{color:inherit}
 </style>
 <canvas id="beer" aria-hidden="true"></canvas>
-<h1>Beer Compass</h1>
 <main>
   <svg id="arrow" class="idle" viewBox="0 0 100 100" aria-label="arrow pointing at the nearest open bar, pub or bottle shop">
     <!-- needle: a slim compass needle, the bright end points at the beer -->
@@ -43,7 +39,7 @@ footer a{color:inherit}
     </g>
   </svg>
 </main>
-<footer>pubs &amp; bottle shops &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a></footer>
+<!-- Venue data © OpenStreetMap contributors, ODbL: https://www.openstreetmap.org/copyright -->
 <script src="beer.js"></script>
 <script src="hours.js"></script>
 <script src="app.js"></script>

@@ -137,6 +137,9 @@
   // Listen from the start anyway: browsers that don't gate it send headings straight away.
   var needsTap = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
   document.addEventListener("click", function () {
+    // motion (for the sloshing bubbles) is the same permission on iOS, but has its own request call
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function")
+      DeviceMotionEvent.requestPermission().catch(function () {});
     if (needsTap && heading == null) {
       DeviceOrientationEvent.requestPermission()
         .then(function (state) { if (state === "granted") expectCompass(); else { compassMissing = true; pick(); } })

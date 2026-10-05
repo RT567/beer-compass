@@ -5,9 +5,12 @@
 (function () {
   var canvas = document.getElementById("beer"), ctx = canvas.getContext("2d");
   var glass = document.createElement("canvas"), gctx = glass.getContext("2d"); // static layer, redrawn on resize
-  var W = 0, H = 0, dpr = 1, SLIDE = 20;
+  var W = 0, H = 0, dpr = 1, SLIDE = 20, F = null; // F = bubble field bounds
   var bubbles = [], streams = [];
   var up = { x: 0, y: -1 }, upWant = { x: 0, y: -1 }; // screen-space direction bubbles rise in (canvas y is down)
+  // Moving the phone: the beer lags behind. slosh = how fast the liquid is sliding across the screen (px/s);
+  // spin = how fast it's turning relative to the screen (rad/s, + = clockwise on screen).
+  var slosh = { x: 0, y: 0 }, spin = 0;
 
   function rand(a, b) { return a + Math.random() * (b - a); }
 
@@ -18,7 +21,11 @@
     glass.width = Math.round((W + 2 * SLIDE) * dpr); // wider than the screen so it can slide sideways
     canvas.height = glass.height = Math.round(H * dpr);
     drawGlass();
-    var n = Math.round(W * H / 1500);
+    // Bubbles live in a square around the screen as wide as its diagonal, so when the beer swirls (phone
+    // turning) there are always bubbles to swirl in from off-screen.
+    var D = Math.hypot(W, H);
+    F = { x0: (W - D) / 2, y0: (H - D) / 2, x1: (W + D) / 2, y1: (H + D) / 2 };
+    var n = Math.round(D * D / 1500);
     bubbles = [];
     for (var i = 0; i < n; i++) bubbles.push(newBubble(true));
     streams = [];
@@ -67,8 +74,8 @@
   function newBubble(anywhere, x, r) {
     r = r || Math.pow(Math.random(), 3) * 3.2 + 0.5;
     return {
-      x: x != null ? x : rand(0, W),
-      y: anywhere ? rand(0, H) : H + r + rand(0, 40),
+      x: x != null ? x : rand(F.x0, F.x1),
+      y: anywhere ? rand(F.y0, F.y1) : F.y1 + r + rand(0, 40),
       r: r, speed: 25 + r * 32 + rand(-8, 8),
       phase: rand(0, 6.28), wob: rand(0.2, 1) * r * 0.8, freq: rand(1.5, 4),
       a: Math.random() < 0.4 ? rand(0.25, 0.55) : 1 // fainter = further back in the glass
@@ -89,15 +96,16 @@
   function drawBubbleAt(b, t) { drawBubble(b, t); ctx.globalAlpha = 1; }
 
   // Off the screen in the direction of travel? Respawn on the opposite side (bottom when upright).
+  // Left the field? Respawn just behind the edge the bubbles are coming from (the bottom when upright).
   function offscreen(b) {
-    var m = 10;
-    return b.y < -m || b.y > H + m + 60 || b.x < -m - 60 || b.x > W + m + 60;
+    var m = 60;
+    return b.y < F.y0 - m || b.y > F.y1 + m || b.x < F.x0 - m || b.x > F.x1 + m;
   }
-  function respawn(b) {
+  function onScreen(b) { return b.x > -5 && b.x < W + 5 && b.y > -5 && b.y < H + 5; }
+  function respawn() {
     var nb = newBubble(false);
-    // start just behind the edge the bubbles are coming from
-    if (Math.abs(up.x) > Math.abs(up.y)) { nb.x = up.x > 0 ? -nb.r - rand(0, 40) : W + nb.r + rand(0, 40); nb.y = rand(0, H); }
-    else { nb.y = up.y < 0 ? H + nb.r + rand(0, 40) : -nb.r - rand(0, 40); }
+    if (Math.abs(up.x) > Math.abs(up.y)) { nb.x = up.x > 0 ? F.x0 - rand(0, 40) : F.x1 + rand(0, 40); nb.y = rand(F.y0, F.y1); }
+    else nb.y = up.y < 0 ? F.y1 + rand(0, 40) : F.y0 - rand(0, 40);
     return nb;
   }
 
@@ -105,6 +113,14 @@
   function frame(now) {
     var t = now / 1000, dt = Math.min(0.05, last ? t - last : 0); last = t;
     up.x += (upWant.x - up.x) * 0.08; up.y += (upWant.y - up.y) * 0.08;
+    var damp = Math.exp(-2.5 * dt);
+    slosh.x *= damp; slosh.y *= damp; spin *= Math.exp(-1.5 * dt);
+    var cs = Math.cos(spin * dt), sn = Math.sin(spin * dt), cx = W / 2, cy = H / 2;
+    function move(b) { // the liquid's motion, then the bubble's own rise
+      var dx = b.x - cx, dy = b.y - cy;
+      b.x = cx + dx * cs - dy * sn + slosh.x * dt; b.y = cy + dx * sn + dy * cs + slosh.y * dt;
+      b.x += up.x * b.speed * dt; b.y += up.y * b.speed * dt;
+    }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // the light in the glass slides a little with the tilt
@@ -113,9 +129,9 @@
 
     for (var i = 0; i < bubbles.length; i++) {
       var b = bubbles[i];
-      b.x += up.x * b.speed * dt; b.y += up.y * b.speed * dt;
-      if (offscreen(b)) b = bubbles[i] = respawn(b);
-      drawBubbleAt(b, t);
+      move(b);
+      if (offscreen(b)) b = bubbles[i] = respawn();
+      if (onScreen(b)) drawBubbleAt(b, t);
     }
     // nucleation streams
     for (var s = 0; s < streams.length; s++) {
@@ -131,9 +147,9 @@
     }
     for (var j = streamBubbles.length - 1; j >= 0; j--) {
       var sb = streamBubbles[j];
-      sb.x += up.x * sb.speed * dt; sb.y += up.y * sb.speed * dt;
+      move(sb);
       if (offscreen(sb)) { streamBubbles.splice(j, 1); continue; }
-      drawBubbleAt(sb, t);
+      if (onScreen(sb)) drawBubbleAt(sb, t);
     }
     requestAnimationFrame(frame);
   }
@@ -153,6 +169,26 @@
     upWant = { x: sx / m, y: -sy / m };
   }
   window.addEventListener("deviceorientation", onTilt);
+
+  // Shove the phone one way and the beer, which wants to stay where it is, slides the other way across the
+  // screen. Spin the phone (like turning with a compass) and the beer stays put, so it swirls the other way.
+  // acceleration is m/s² without gravity in device axes (x right, y up); rotationRate.alpha is deg/s about
+  // the screen's normal, counter-clockwise positive.
+  function onMotion(e) {
+    var dt = (e.interval > 1 ? e.interval / 1000 : e.interval) || 0.016; // some browsers report ms, some s
+    var a = e.acceleration, rr = e.rotationRate;
+    if (a && a.x != null) {
+      var ang = -((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180;
+      var ax = a.x * Math.cos(ang) - a.y * Math.sin(ang), ay = a.x * Math.sin(ang) + a.y * Math.cos(ang);
+      slosh.x -= ax * 220 * dt; slosh.y += ay * 220 * dt; // screen y points down, device y up
+      var m = Math.hypot(slosh.x, slosh.y);
+      if (m > 600) { slosh.x *= 600 / m; slosh.y *= 600 / m; }
+    }
+    if (rr && rr.alpha != null) {
+      spin += (rr.alpha * Math.PI / 180 * 0.7 - spin) * Math.min(1, dt * 8); // follow most of the turn
+    }
+  }
+  window.addEventListener("devicemotion", onMotion);
 
   window.addEventListener("resize", resize);
   resize();
