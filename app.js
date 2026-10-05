@@ -109,6 +109,7 @@
   var gotAbsolute = false, compassMissing = false;
   function setMagnetic(h) {
     var first = heading == null;
+    compassMissing = false;
     heading = (h + DECLINATION + screenAngle() + 360) % 360;
     if (first) pick();
   }
@@ -137,14 +138,17 @@
   // Listen from the start anyway: browsers that don't gate it send headings straight away.
   var needsTap = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
   document.addEventListener("click", function () {
-    // motion (for the sloshing bubbles) is the same permission on iOS, but has its own request call
-    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function")
-      DeviceMotionEvent.requestPermission().catch(function () {});
+    // Compass first: iOS may only honour one permission request per tap. Motion (for the sloshing bubbles) is
+    // the same permission there, so ask for it once the compass is granted, without needing another tap.
+    var motion = function () {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function")
+        DeviceMotionEvent.requestPermission().catch(function () {});
+    };
     if (needsTap && heading == null) {
       DeviceOrientationEvent.requestPermission()
-        .then(function (state) { if (state === "granted") expectCompass(); else { compassMissing = true; pick(); } })
-        .catch(function () { compassMissing = true; pick(); });
-    }
+        .then(function (state) { if (state === "granted") { expectCompass(); motion(); } else { compassMissing = true; pick(); } })
+        .catch(function () { compassMissing = true; pick(); }); // e.g. no user gesture; the next tap retries
+    } else motion();
     startLocation(); // retry if location failed earlier
   });
 
