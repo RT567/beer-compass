@@ -189,6 +189,11 @@
     }
   }
   window.addEventListener("devicemotion", onMotion);
+  // Chrome only starts sending once permission is granted (app.js asks); reattach so the listeners wake up.
+  window.addEventListener("sensors-granted", function () {
+    window.removeEventListener("deviceorientation", onTilt); window.addEventListener("deviceorientation", onTilt);
+    window.removeEventListener("devicemotion", onMotion); window.addEventListener("devicemotion", onMotion);
+  });
 
   window.addEventListener("resize", resize);
   resize();

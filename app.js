@@ -129,10 +129,12 @@
     if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) setMagnetic(e.webkitCompassHeading); // iOS
     else if (e.absolute && !gotAbsolute && e.alpha != null) setMagnetic(headingFromEuler(e.alpha, e.beta, e.gamma)); // Firefox
   }
-  var listening = false;
+  // Called at load and again after permission is granted: Chrome (151+) sends nothing until requestPermission()
+  // is called, and listeners attached before the grant may never start, so detach and reattach them. beer.js
+  // does the same for its listeners on the "sensors-granted" event.
   function listen() {
-    if (listening) return;
-    listening = true;
+    window.removeEventListener("deviceorientationabsolute", onAbsolute);
+    window.removeEventListener("deviceorientation", onOrientation);
     window.addEventListener("deviceorientationabsolute", onAbsolute);
     window.addEventListener("deviceorientation", onOrientation);
   }
@@ -171,21 +173,36 @@
   // Listen from the start anyway: browsers that don't gate it send headings straight away.
   var needsTap = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
   document.addEventListener("click", function () {
-    // Compass first: iOS may only honour one permission request per tap. Motion (for the sloshing bubbles) is
-    // the same permission there, so ask for it once the compass is granted, without needing another tap.
-    var motion = function () {
-      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function")
-        DeviceMotionEvent.requestPermission().catch(function () {});
-    };
-    if (needsTap && heading == null) {
-      // true = absolute orientation, i.e. the magnetometer too. Without it Chrome (Android) only grants the
-      // relative sensors and never fires deviceorientationabsolute. iOS ignores the argument.
-      DeviceOrientationEvent.requestPermission(true)
-        .then(function (state) { sensors.perm = state; if (state === "granted") { expectCompass(); motion(); } else { compassMissing = true; pick(); } })
-        .catch(function (err) { sensors.perm = "error: " + (err && err.name); compassMissing = true; pick(); }); // e.g. no user gesture; the next tap retries
-    } else motion();
+    if (needsTap && heading == null) askSensors();
     startLocation(); // retry if location failed earlier
   });
+
+  // Ask for orientation (with the magnetometer: `true` = absolute, else Chrome withholds
+  // deviceorientationabsolute) and motion (the sloshing bubbles), both inside this tap. iOS may refuse the second
+  // request in one tap, so motion is asked again once orientation is granted.
+  function askSensors() {
+    var motion = function () {
+      if (typeof DeviceMotionEvent === "undefined" || typeof DeviceMotionEvent.requestPermission !== "function")
+        return Promise.resolve("n/a");
+      return DeviceMotionEvent.requestPermission().catch(function (e) { return "error: " + (e && e.name); });
+    };
+    // If the absolute (magnetometer) request is refused, still ask for the plain one so the bubbles work.
+    var plain = function () { return DeviceOrientationEvent.requestPermission(); };
+    var orientation = DeviceOrientationEvent.requestPermission(true)
+      .then(function (st) { sensors.absPerm = st; return st === "granted" ? st : plain(); }, plain);
+    var firstMotion = motion();
+    orientation.then(function (state) {
+      sensors.perm = state;
+      if (state !== "granted") { compassMissing = true; pick(); return; }
+      return firstMotion.then(function (m) { return m === "granted" ? m : motion(); }).then(function (m) {
+        sensors.motion = m;
+        listen();
+        window.dispatchEvent(new Event("sensors-granted"));
+        expectCompass();
+      });
+    }).catch(function (err) { sensors.perm = "error: " + (err && err.name); compassMissing = true; pick(); }); // next tap retries
+  }
+
 
   listen();
   if (!needsTap) expectCompass();
@@ -207,7 +224,7 @@
     status.innerHTML = "";
     status.appendChild(document.createTextNode(line));
     var d = document.createElement("div");
-    d.textContent = "perm " + sensors.perm + " · events abs " + sensors.abs + " rel " + sensors.rel + " ios " + sensors.ios +
+    d.textContent = "v6 · perm " + (sensors.absPerm ? "abs:" + sensors.absPerm + " " : "") + sensors.perm + " motion " + (sensors.motion || "-") + " · events abs " + sensors.abs + " rel " + sensors.rel + " ios " + sensors.ios +
       " gs " + (sensors.gs || 0) + (sensors.gsErr ? "(" + sensors.gsErr + ")" : "") + " · " + sensors.last + " · heading " + (heading == null ? "none" : Math.round(heading)) +
       (compassMissing ? " · NO COMPASS" : "") + " · screen " + screenAngle();
     status.appendChild(d);
