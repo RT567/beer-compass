@@ -1,6 +1,7 @@
 // The joke: right after the real "wants to use your location" prompt, a fake system prompt asks if you're an
-// idiot. Yes and No both just close it. It's styled like the platform's own permission prompt: an iOS alert on
-// iPhone/iPad, a Chrome-style dialog everywhere else. app.js fires "located" once the location prompt is done.
+// idiot. Every answer just closes it (and is remembered like a real permission answer, see remember()).
+// It's styled like the platform's own permission prompt: an iOS alert on iPhone/iPad, a Chrome-style dialog
+// everywhere else. app.js fires "located" once the location prompt is done.
 // Bonus: on iOS the tap on Yes/No bubbles to app.js's document click handler, which unlocks the compass.
 (function () {
   var ios = /iP(hone|ad|od)/.test(navigator.userAgent) ||
@@ -30,28 +31,52 @@
     ".chrome-prompt{width:min(320px,calc(100vw - 48px));background:#fff;color:#1f1f1f;border-radius:16px;" +
     "padding:20px 20px 12px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:Roboto,system-ui,sans-serif}" +
     ".chrome-prompt p{margin:0 0 18px;font-size:16px;line-height:1.4}" +
-    ".chrome-prompt .row{display:flex;justify-content:flex-end;gap:8px}" +
-    ".chrome-prompt button{color:#0b57d0;font-size:14px;font-weight:500;padding:10px 12px;border-radius:20px}" +
+    ".chrome-prompt .row{display:flex;flex-direction:column;align-items:stretch;gap:4px}" +
+    ".chrome-prompt button{color:#0b57d0;font-size:14px;font-weight:500;padding:11px 12px;border-radius:20px;text-align:center}" +
     ".chrome-prompt button:active{background:rgba(11,87,208,.1)}" +
     "@media (prefers-color-scheme:dark){.chrome-prompt{background:#2d2f31;color:#e3e3e3}.chrome-prompt button{color:#a8c7fa}}";
   document.head.appendChild(css);
+
+  // The answer is remembered the way the browser remembers a location answer, so it only asks when you'd
+  // expect the real prompt to ask. iOS Safari: Yes/No, kept for one day. Chrome: the same three choices as its
+  // location prompt: "while visiting the site" and "never" stick; "this time" lasts until the tab is closed.
+  var DAY = 24 * 3600 * 1000;
+  function remembered() {
+    try {
+      if (sessionStorage.getItem("idiot")) return true;
+      var v = JSON.parse(localStorage.getItem("idiot") || "null");
+      return !!v && (!v.until || v.until > Date.now());
+    } catch (e) { return false; }
+  }
+  function remember(choice) {
+    try {
+      if (choice === "once") sessionStorage.setItem("idiot", "yes");
+      else localStorage.setItem("idiot", JSON.stringify({ answer: choice, until: ios ? Date.now() + DAY : 0 }));
+    } catch (e) {}
+  }
 
   function show() {
     var el = document.createElement("div");
     el.id = "idiot";
     el.setAttribute("role", "alertdialog");
     el.innerHTML = ios
-      ? '<div class="ios-alert"><h2>“' + host + '” Would Like to Know If You’re an Idiot</h2>' +
-        '<div class="row"><button>No</button><button>Yes</button></div></div>'
-      : '<div class="chrome-prompt"><p>' + host + " wants to know if you’re an idiot</p>" +
-        '<div class="row"><button>No</button><button>Yes</button></div></div>';
-    el.addEventListener("click", function (e) { if (e.target.tagName === "BUTTON") el.remove(); });
+      ? '<div class="ios-alert"><h2>\u201c' + host + '\u201d Would Like to Know If You\u2019re an Idiot</h2>' +
+        '<div class="row"><button data-a="no">No</button><button data-a="yes">Yes</button></div></div>'
+      : '<div class="chrome-prompt"><p>' + host + " wants to know if you\u2019re an idiot</p>" +
+        '<div class="row"><button data-a="yes">Yes, while visiting the site</button>' +
+        '<button data-a="once">Yes, this time</button><button data-a="no">No, never</button></div></div>';
+    el.addEventListener("click", function (e) {
+      var a = e.target.getAttribute && e.target.getAttribute("data-a");
+      if (!a) return;
+      remember(a);
+      el.remove();
+    });
     document.body.appendChild(el);
   }
 
   var shown = false;
   window.addEventListener("located", function () {
-    if (shown) return;
+    if (shown || remembered()) return;
     shown = true;
     setTimeout(show, 700);
   });
